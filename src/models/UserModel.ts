@@ -23,19 +23,25 @@ export interface IUser extends Document {
   comparePassword(password: string): Promise<boolean>;
 }
 
-const userSchema = new Schema<IUser>({
-  username: { type: String, required: true, trim: true },
-  email: {
-    type: String,
-    required: true,
-    trim: true,
-    unique: true,
-    lowercase: true,
+const userSchema = new Schema<IUser>(
+  {
+    username: { type: String, required: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      unique: true,
+      lowercase: true,
+    },
+    password: { type: String, required: true, select: false },
+    role: { type: String, enum: ["user", "admin"], default: "user" },
+    refreshTokens: { type: [refreshTokenSchema], default: [] },
   },
-  password: { type: String, required: true },
-  role: { type: String, enum: ["user", "admin"], default: "user" },
-  refreshTokens: { type: [refreshTokenSchema], default: [] },
-});
+  {
+    timestamps: true,
+    versionKey: false,
+  }
+);
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
