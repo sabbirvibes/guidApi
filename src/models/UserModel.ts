@@ -4,7 +4,7 @@ interface refreshTokenInterface {
   jti: string;
   tokenHash: string;
   expiresAt: Date;
-  createdAt: Date;
+  createdAt?: Date;
 }
 
 const refreshTokenSchema = new Schema<refreshTokenInterface>({
