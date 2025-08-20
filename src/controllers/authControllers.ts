@@ -230,3 +230,41 @@ export const refreshToken = async (req: Request, res: Response) => {
     }
   }
 };
+
+export const logout = async (req: Request, res: Response) => {
+  const token = req.cookies?.refreshToken;
+  if (token) {
+    try {
+      const payload = verifyRefreshToken(token) as tokenDataInterface;
+      if (!payload._id && !payload.jti) {
+        res.status(401).json({
+          success: false,
+          errorType: cookieStore,
+          message: "Invalid Token/Expires",
+        });
+      }
+      const existUser = await UserModel.findById<IUser>(payload._id);
+
+      if (!existUser) {
+        res.status(401).json({
+          success: false,
+          errorType: cookieStore,
+          message: "User Not Found.Please Provide Correct Token!",
+        });
+      }
+      if (existUser?.refreshTokens?.length) {
+        existUser.refreshTokens = existUser?.refreshTokens.filter(
+          (rt) => rt.jti !== payload.jti
+        );
+        await existUser?.save();
+      }
+    } catch (error) {
+      console.log("Invalid Token/Expired", error);
+    }
+  }
+  clearAuthCookies(res);
+  res.status(200).json({
+    success: true,
+    message: "Logout Successfully!",
+  });
+};
