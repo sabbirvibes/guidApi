@@ -3,8 +3,9 @@ import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { IUser } from "../models/UserModel";
 import { config } from "../config/config";
 import { v4 as uuidv4 } from "uuid";
+import { tokenDataInterface } from "../types/token";
 export const signAccessToken = (user: IUser) => {
-  const payload = {
+  const payload = <tokenDataInterface>{
     _id: user._id,
     email: user.email,
     role: user.role,
@@ -20,7 +21,7 @@ export const signAccessToken = (user: IUser) => {
 };
 
 export const signRefreshToken = (user: IUser, jti: string) => {
-  const payload = {
+  const payload = <tokenDataInterface>{
     _id: user._id,
     email: user.email,
     role: user.role,

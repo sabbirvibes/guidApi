@@ -6,12 +6,18 @@ import {
   registerDto,
   registerValidate,
 } from "../dtos/auth.dtos";
-import UserModel from "../models/UserModel";
+import UserModel, { IUser } from "../models/UserModel";
 import createHttpError from "http-errors";
-import { newJti, signAccessToken, signRefreshToken } from "../utils/jwt";
+import {
+  newJti,
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+} from "../utils/jwt";
 import { config } from "../config/config";
 import { getExpiryDate } from "../utils/getExpiryDate";
-import { setAuthCookies } from "../utils/cookie";
+import { clearAuthCookies, setAuthCookies } from "../utils/cookie";
+import { tokenDataInterface } from "../types/token";
 export const registerUser = async (req: Request, res: Response) => {
   try {
     const validate = registerValidate.safeParse(req.body);
@@ -117,6 +123,98 @@ export const loginUser = async (req: Request, res: Response) => {
       success: true,
       message: "User Login Successfully",
       accessToken,
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      const error = createHttpError(500, {
+        success: false,
+        errorType: "loginFail",
+        message: `Something Went Wrong! Error : ${err.message}`,
+      });
+      throw error;
+    } else {
+      const error = createHttpError(500, `Server Error`);
+      throw error;
+    }
+  }
+};
+
+export const refreshToken = async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.refreshToken;
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        errorType: "cookie",
+        message: "No Refresh Token!",
+      });
+    }
+    let payload: tokenDataInterface;
+    try {
+      payload = verifyRefreshToken(token) as tokenDataInterface;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (err) {
+      clearAuthCookies(res);
+      return res.status(401).json({
+        success: false,
+        errorType: "cookie",
+        message: "Refresh Token Invalid/Expired!",
+      });
+    }
+
+    const existUser = await UserModel.findById<IUser>(payload._id);
+    if (!existUser) {
+      clearAuthCookies(res);
+      return res.status(401).json({
+        success: false,
+        errorType: "cookie",
+        message: "User Not Found!",
+      });
+    }
+    const stored = existUser.refreshTokens.find((rt) => rt.jti === payload.jti);
+    if (!stored) {
+      clearAuthCookies(res);
+      return res.status(401).json({
+        success: false,
+        errorType: "cookie",
+        message: "Possible Token Reused Detected.All Session Revoked.",
+      });
+    }
+
+    const compare = await bcrypt.compare(token, stored.tokenHash);
+
+    if (!compare) {
+      clearAuthCookies(res);
+      return res.status(401).json({
+        success: false,
+        errorType: "cookie",
+        message: "Token Mismatch.All Session Revoked.",
+      });
+    }
+    existUser.refreshTokens = existUser.refreshTokens.filter(
+      (rt) => rt.jti !== payload.jti
+    );
+
+    const jti = newJti();
+    const expiresAt = getExpiryDate(
+      config.REFRESH_TOKEN_EXPIRES_IN,
+      7 * 24 * 3600 * 1000
+    );
+    const newAccessToken = signAccessToken(existUser);
+    const newRefreshToken = signRefreshToken(existUser, jti);
+    const tokenHash = await bcrypt.hash(newRefreshToken, 10);
+
+    existUser.refreshTokens.push({
+      jti,
+      tokenHash,
+      expiresAt,
+    });
+    await existUser.save();
+    setAuthCookies(res, newAccessToken, newRefreshToken);
+    res.status(200).json({
+      success: true,
+      message: "Refresh Token Created Successfully!",
+      accessToken: newAccessToken,
     });
   } catch (err) {
     if (err instanceof Error) {
